@@ -5,14 +5,14 @@ import traceback
 import datetime
 
 # https://praw.readthedocs.io/en/latest/tutorials/reply_bot.html
-WAIT = 10
-SUBREDDIT = 'relationships'
+WAIT = 10  # time to wait before restarting (after exception)
 
 
 class Database:
     
-    def __init__(self, file):
-        self.sql = sqlite3.connect(file)
+    def __init__(self, sub):
+        filename = sub + '.db'
+        self.sql = sqlite3.connect(filename)
         self.cur = self.sql.cursor()
         self.cur.execute('CREATE TABLE IF NOT EXISTS posts(id TEXT, subreddit TEXT)')
         self.cur.execute('CREATE INDEX IF NOT EXISTS postindex on posts(id)')
@@ -36,33 +36,40 @@ class Database:
 
 class Bot():
 
-    def __init__(self):
+    def __init__(self, subreddit):
 
         print('Logging in...')
         self.reddit = credentials.reddit
-        self.db = Database('relationships.db')
+        self.db = Database(subreddit)
         print('Successfully logged in.')
 
+        self.sub = subreddit
+
     def do(self):
-        print('Checking /r/' + SUBREDDIT)
-        subreddit = self.reddit.subreddit(SUBREDDIT)
+        print('Checking /r/' + self.sub)
+        subreddit = self.reddit.subreddit(self.sub)
         submissions = subreddit.stream.submissions()
     
         for submission in submissions:
             if self.db.in_database(submission):
                 continue
 
-            print(datetime.datetime.now(), 'NEW SUBMISSION')
-            print('Title:', submission.title)
-            print('\t', submission.selftext.replace('\n', ' '))
-            print()
+            self.process(submission)
 
-            self.db.add(submission)
+    def process(self, submission):
+
+        time = datetime.datetime.now()
+
+        print(time, 'NEW SUBMISSION')
+        print('Title:', submission.title)
+        print('\t', submission.selftext.replace('\n', ' '), end='\n\n')
+
+        self.db.add(submission)
 
 
 if __name__ == '__main__':
 
-    bot = Bot()
+    bot = Bot('relationships')
 
     while True:
         try:
