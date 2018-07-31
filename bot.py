@@ -3,6 +3,7 @@ import time
 import sqlite3
 import traceback
 import datetime
+import nltk
 
 # https://praw.readthedocs.io/en/latest/tutorials/reply_bot.html
 WAIT = 10  # time to wait before restarting (after exception)
@@ -14,27 +15,29 @@ class Database:
         filename = sub + '.db'
         self.sql = sqlite3.connect(filename)
         self.cur = self.sql.cursor()
-        self.cur.execute('CREATE TABLE IF NOT EXISTS posts(id TEXT, subreddit TEXT)')
+        self.cur.execute('CREATE TABLE IF NOT EXISTS posts(id TEXT, subreddit TEXT, title TEXT, selftext TEXT)')
         self.cur.execute('CREATE INDEX IF NOT EXISTS postindex on posts(id)')
 
     def add(self, submission):
+        id = submission.fullname
         subreddit = submission.subreddit.display_name.lower()
-        submission = submission.fullname
+        title = submission.title
+        text = submission.selftext
 
-        self.cur.execute('INSERT INTO posts VALUES(?, ?)', [submission, subreddit])
+        self.cur.execute('INSERT INTO posts VALUES(?, ?, ?, ?)', [id, subreddit, title, text])
         self.sql.commit()
 
     def in_database(self, submission):
-        submission = submission.fullname
-        if '_' not in submission:
-            submission = 't3_' + submission
+        id = submission.fullname
+        if '_' not in id:
+            id = 't3_' + id
 
-        self.cur.execute('SELECT * FROM posts WHERE id == ?', [submission])
+        self.cur.execute('SELECT * FROM posts WHERE id == ?', [id])
         item = self.cur.fetchone()
         return item is not None
 
 
-class Bot():
+class Bot:
 
     def __init__(self, subreddit):
 
@@ -51,25 +54,50 @@ class Bot():
         submissions = subreddit.stream.submissions()
     
         for submission in submissions:
-            if self.db.in_database(submission):
-                continue
-
             self.process(submission)
 
-    def process(self, submission):
+    def is_interesting(self, submission):
+        return True
+
+    def process(self, submission, cache=True):
 
         time = datetime.datetime.now()
 
         print(time, 'NEW SUBMISSION')
         print('Title:', submission.title)
-        print('\t', submission.selftext.replace('\n', ' '), end='\n\n')
+        print('\t', submission.selftext.replace('\n', ' '))
+        if self.is_interesting(submission):
+            print("AND IT'S INTERESTING", end="")
 
-        self.db.add(submission)
+        if cache:
+            print('Caching', end="")
+            self.db.add(submission)
+
+        print('\n')
+
+
+class BreakupBot(Bot):
+
+    interesting = [
+        'breakup',
+        'break',
+        'end',
+        'over'
+    ]
+
+    # def is_interesting(self, submission):
+    #     return True in [word in submission.selftext.lower() for word in self.interesting]
+
+    def process(self, submission, cache=True):
+        cache = cache and not self.db.in_database(submission) and self.is_interesting(submission)
+        super(BreakupBot, self).process(submission, cache)
+
+        tokenized = nltk.word_tokenize(submission.selftext)
 
 
 if __name__ == '__main__':
 
-    bot = Bot('relationships')
+    bot = BreakupBot('relationships')
 
     while True:
         try:
