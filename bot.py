@@ -8,35 +8,58 @@ import dill as pickle
 from collections import defaultdict
 import subprocess
 import time as t
-import praw
 from praw.models import MoreComments
 import re
-
 
 # https://praw.readthedocs.io/en/latest/tutorials/reply_bot.html
 WAIT = 10  # time to wait before restarting (after exception)
 
+# Gender constants
+MALE = ' ~MALE~ '
+FEMALE = ' ~FEMALE~ '
 
-def is_male(submission):
-    tokenized = nltk.word_tokenize(submission.title)
-    print(tokenized)
+# Define regex
+male = re.compile('\s\[[\\\/\s0-9mM]*\]|\([\s0-9mM]*\)\s*')
+female = re.compile('\s*\[[\\\/\s0-9fF]*\]|\([\s0-9fF]*\)\s*')
+me = '(I|I\'ve|My|Me)'
+partner = '(boyfriend|girlfriend|[bBgG][fF]|husband|wife|partner|fiance|spouse)'
+generic_tag = re.compile('\[.*]\]')
+
+
+def op_gender(submission):
+
+    title = clean_title(submission)
+    if re.search(re.compile(me + '\s*' + MALE), title):
+        return MALE
+    elif re.search(re.compile(me + '\s*' + FEMALE), title):
+        return FEMALE
+    else:
+        return None
 
 
 def say(submission):
 
-    # male = re.compile('\[\s*[0-9]+\s*[m|M]\s*\]')
-    # female = re.compile('\[\s*[0-9]+\s*[f|F]\s*\]')
-    tag = re.compile('\[.*]\]')
-
-    text = re.sub(tag, '', str(submission.title))
+    text = re.sub(generic_tag, '', str(submission.title))
     # text = re.sub(female, '', text)
 
-    if is_male(submission):
-        voice = '1'
+    if op_gender(submission) == MALE:
+        voice = 'Alex'
     else:
-        voice = '2'
+        voice = 'Victoria'
 
-    subprocess.call(['say', text])
+    subprocess.call(['say', '-v', voice, text])
+
+
+def sub_vars(submission):
+    import pprint
+    pprint.pprint(vars(submission))
+
+
+def clean_title(submission):
+    text = re.sub(male, MALE, submission.title)
+    text = re.sub(female, FEMALE, text)
+
+    return text
 
 
 class Database:
@@ -139,13 +162,16 @@ class Bot:
     @staticmethod
     def print_contents(submission, comments=False):
         print('----', datetime.datetime.now(), '----')
-        print('Submission ID:', submission.fullname, 'Title:', submission.title)
+        print('Submission ID:', submission.fullname, 'Title:', clean_title(submission))
         print(submission.selftext.replace('\n', '\t'))
+        print('Flair:', submission.link_flair_text, end=' ')
+        gender = op_gender(submission)
+        print('OP gender:', gender.strip() if gender else '~')
 
         if comments:
             for comment in submission.comments:
                 if isinstance(comment, MoreComments):
-                    continue
+                    continue  # Ignore nested comments
                 print('\t', comment.body.replace('\n', '\t'))
 
 
@@ -205,25 +231,19 @@ class PostStats:
 
 class BreakupBot(Bot):
 
-    # set of words whose existence in a post makes it interesting
-    interesting = {
-        'breakup',
-        'break-up',
-        'breaking',
-        'break',
-        'divorce',
-    }
-
     def is_interesting(self, submission):
-        tokenized = nltk.word_tokenize(submission.title) + nltk.word_tokenize(submission.selftext)
-        # Intersect interesting word list w/ tokenized text and check there is at least one elem
-        intersection = BreakupBot.interesting & set(tokenized)
-        if intersection:
-            print(intersection)
-        return len(intersection) > 0
+        """
+        Only interested in posts whose flair is [Breakups]
+        """
+
+        return submission.link_flair_text == 'Breakups'
 
     def process(self, submission, cache=True):
         super(BreakupBot, self).process(submission, cache)
+
+        tokenized = nltk.word_tokenize(clean_title(submission))
+
+        # print(tokenized)
 
 
 if __name__ == '__main__':

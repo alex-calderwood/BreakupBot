@@ -8,7 +8,6 @@ class Plotter:
 
     def __init__(self):
         # Initialize
-        # style.use('seaborn-notebook	')
         fig, ax = plt.subplots()
         self.xdata, self.ydata = [], []
         stats = PostStats(Bot.stat_pickle)
@@ -44,7 +43,7 @@ class Plotter:
         # Continually plot the data
         while True:
             self.update()
-            plt.plot(self.xdata, self.ydata, c='black')
+            plt.hist(self.xdata, self.ydata, c='black')
             self.update()
             plt.pause(.5)
 
